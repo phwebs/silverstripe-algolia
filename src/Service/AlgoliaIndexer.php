@@ -109,6 +109,22 @@ class AlgoliaIndexer
      */
     public function exportAttributesFromObject($item)
     {
+        $objectImage = '';
+        if (method_exists($item, 'PreviewImage') && $item->PreviewImage() && $item->PreviewImage()->exists()) {
+            $objectImage = $item->PreviewImage()->URL;
+        } elseif (isset($this->PreviewVideoLowResImageURL) && $item->PreviewVideoLowResImageURL) { // CourseEntry
+            $objectImage = $item->PreviewVideoLowResImageURL;
+        } elseif (isset($this->VideoLowResImageURL) && $item->VideoLowResImageURL) { // ArchivedWebinar
+           $objectImage = $item->VideoLowResImageURL; 
+        } elseif (method_exists($item, 'FeaturedImage') && $item->FeaturedImage() && $item->FeaturedImage()->exists()) { // BlogPost
+            $objectImage = $item->FeaturedImage()->URL;
+        }
+        
+        $objectContent = '';
+        if (isset($this->Content) && !empty($this->Content)) {
+            $objectContent = strip_tags($this->Content);
+        }
+
         $toIndex = [
             'objectID' => $item->AlgoliaUUID,
             'objectSilverstripeID' => $item->ID,
@@ -117,7 +133,9 @@ class AlgoliaIndexer
             'objectClassNameHierarchy' => array_values(ClassInfo::ancestry(get_class($item))),
             'objectLastEdited' => $item->dbObject('LastEdited')->getTimestamp(),
             'objectCreated' => $item->dbObject('Created')->getTimestamp(),
-            'objectLink' => str_replace(['?stage=Stage', '?stage=Live'], '', $item->AbsoluteLink())
+            'objectLink' => str_replace(['?stage=Stage', '?stage=Live'], '', $item->AbsoluteLink()),
+            'objectContent' => $objectContent,
+            'objectImage' => $objectImage,
         ];
 
         if ($this->config()->get('include_page_content')) {

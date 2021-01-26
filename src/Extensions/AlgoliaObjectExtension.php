@@ -39,8 +39,8 @@ class AlgoliaObjectExtension extends DataExtension
 
     private static $db = [
         'AlgoliaIndexed' => 'Datetime',
-        'AlgoliaError' => 'Varchar(200)',
-        'AlgoliaUUID' => 'Varchar(200)'
+        'AlgoliaUUID' => 'Varchar(200)',
+        'AlgoliaError' => 'Varchar(200)'
     ];
 
     /**
@@ -113,7 +113,8 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function markAsRemovedFromAlgoliaIndex()
     {
-        $this->touchAlgoliaIndexedDate(true);
+        $this->touchAlgoliaIndexedDate(true)
+            ->algoliaUpdateDB();
     }
 
     /**
@@ -121,25 +122,9 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function touchAlgoliaIndexedDate($isDeleted = false)
     {
-        $schema = DataObject::getSchema();
-        $table = $schema->tableForField($this->owner->ClassName, 'AlgoliaIndexed');
+        $this->owner->AlgoliaIndexed = $isDeleted ? 'null' : 'NOW()';
 
-        if ($table) {
-            $newValue = $isDeleted ? 'null' : 'NOW()';
-            // Also ensure Live and Draft UUIDs are the same in case Live didn't previously have a UUID
-            $uuid = "'" . $this->owner->AlgoliaUUID . "'";
-            DB::query(sprintf("UPDATE %s SET AlgoliaIndexed = $newValue WHERE ID = %s", $table, $this->owner->ID));
-
-            if ($this->owner->hasExtension('SilverStripe\Versioned\Versioned')) {
-                DB::query(
-                    sprintf(
-                        "UPDATE %s_Live SET AlgoliaIndexed = $newValue, AlgoliaUUID = $uuid WHERE ID = %s",
-                        $table,
-                        $this->owner->ID
-                    )
-                );
-            }
-        }
+        return $this->owner;
     }
 
     /**
@@ -174,23 +159,15 @@ class AlgoliaObjectExtension extends DataExtension
 
         try {
             $indexer->indexItem($this->owner);
-            $this->touchAlgoliaIndexedDate();
+            $this->touchAlgoliaIndexedDate()
+                ->algoliaUpdateDB();
 
             return true;
         } catch (Exception $e) {
             Injector::inst()->create(LoggerInterface::class)->error($e);
 
-            $schema = DataObject::getSchema();
-            $table = $schema->tableForField($this->owner->ClassName, 'AlgoliaError');
-
-            DB::query(
-                sprintf(
-                    'UPDATE %s SET AlgoliaError = \'%s\' WHERE ID = %s',
-                    $table,
-                    Convert::raw2sql($e->getMessage()),
-                    $this->owner->ID
-                )
-            );
+            $this->owner->AlgoliaError = Convert::raw2sql($e->getMessage());
+            $this->algoliaUpdateDB(['AlgoliaError' => $this->owner->AlgoliaError]);
 
             return false;
         }
@@ -239,17 +216,21 @@ class AlgoliaObjectExtension extends DataExtension
         return true;
     }
 
-    public function onBeforeWrite()
-    {
-        if (!$this->owner->AlgoliaUUID) {
-            $this->owner->assignAlgoliaUUID();
-        }
-    }
+    // public function onBeforeWrite()
+    // {
+    //     if (!$this->owner->AlgoliaUUID) {
+    //         $this->owner->assignAlgoliaUUID();
+    //     }
+    // }
 
     public function assignAlgoliaUUID()
     {
-        $uuid = Uuid::uuid4();
-        $this->owner->AlgoliaUUID = $uuid->toString();
+        if (!$this->owner->AlgoliaUUID) {
+            $uuid = Uuid::uuid4();
+            $this->owner->AlgoliaUUID = $uuid->toString();
+        }
+
+        return $this->owner;
     }
 
     /**
@@ -267,6 +248,7 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function onBeforeDuplicate()
     {
+        $this->owner->AlgoliaUUID = null;
         $this->owner->assignAlgoliaUUID();
         $this->owner->AlgoliaIndexed = null;
         $this->owner->AlgoliaError = null;
@@ -280,5 +262,44 @@ class AlgoliaObjectExtension extends DataExtension
         $indexer = Injector::inst()->get(AlgoliaIndexer::class);
 
         return $indexer->getService()->initIndexes($this->owner);
+    }
+
+    public function algoliaUpdateDB($data = [])
+    {
+        
+        $schema = DataObject::getSchema();
+        $table = $schema->tableForField($this->owner->ClassName, 'AlgoliaIndexed');
+
+        $update = SQLUpdate::create('"' . $table . '"')->addWhere(['ID' => $this->owner->ID]);
+        if (count($data) > 0) {
+            foreach ($data as $column => $value) {
+                if ($column == 'AlgoliaIndexed') {
+                    if ($this->owner->AlgoliaIndexed === 'null' || $this->owner->AlgoliaIndexed === 'NOW()') {
+                        $update->assignSQL('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+                    } else {
+                        $update->assign('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+                    }
+                } else {
+                    $update->assign('"' . $column . '"', $value);
+                }
+            }
+        } else {
+            if ($this->owner->AlgoliaIndexed === 'null' || $this->owner->AlgoliaIndexed === 'NOW()') {
+                $update->assignSQL('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+            } else {
+                $update->assign('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+            }
+            $update->assign('"AlgoliaError"', $this->owner->AlgoliaError);
+            $update->assign('"AlgoliaUUID"', $this->owner->AlgoliaUUID);
+        }
+        $update->execute();
+
+        if ($this->owner->hasExtension('SilverStripe\Versioned\Versioned')) {
+            $update->setTable('"' . $table . '_Live"');
+            $update->execute();
+        }
+        
+
+        return $this->owner;
     }
 }

@@ -124,23 +124,6 @@ class AlgoliaReindex extends BuildTask
                     continue;
                 }
 
-                // Set AlgoliaUUID, in case it wasn't previously set
-                if (!$item->AlgoliaUUID) {
-                    $item->assignAlgoliaUUID();
-
-                    try {
-                        $item->write();
-                    } catch (Exception $e) {
-                        var_dump($e);
-                        die();
-                        Injector::inst()->get(LoggerInterface::class)->error($e);
-
-                        $errored++;
-
-                        continue;
-                    }
-                }
-
                 $batchKey = get_class($item);
 
                 if (!isset($currentBatches[$batchKey])) {
@@ -148,7 +131,11 @@ class AlgoliaReindex extends BuildTask
                 }
 
                 $currentBatches[$batchKey][] = $indexer->exportAttributesFromObject($item)->toArray();
-                $item->touchAlgoliaIndexedDate();
+                
+                $item->assignAlgoliaUUID()
+                    ->touchAlgoliaIndexedDate()
+                    ->algoliaUpdateDB();
+                    
                 $count++;
 
                 if (count($currentBatches[$batchKey]) >= $batchSize) {

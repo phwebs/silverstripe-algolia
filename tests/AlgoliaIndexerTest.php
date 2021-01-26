@@ -41,6 +41,7 @@ class AlgoliaIndexerTest extends SapphireTest
     {
         $object = AlgoliaTestObject::create();
         $object->Title = 'Delete This';
+        $object->assignAlgoliaUUID();
         $object->write();
 
         $indexer = Injector::inst()->get(AlgoliaIndexer::class);
