@@ -122,8 +122,8 @@ class AlgoliaIndexer
         }
         if (!empty($objectImage)) {
             if (substr($objectImage, 0, 1) == '/') $objectImage = substr($objectImage, 1);
-            $objectImage = Director::absoluteBaseURL() . $objectImage;
-            // $objectImage = 'https://www.hpacademy.com/' . $objectImage;
+            // $objectImage = Director::absoluteBaseURL() . $objectImage;
+            $objectImage = 'https://www.hpacademy.com/' . $objectImage;
         }
 
         $objectContent = '';
@@ -216,6 +216,7 @@ class AlgoliaIndexer
                         }
 
                         if ($hasContent) {
+                            $value = strip_tags($value);
                             $attributes->push($attributeName, $value);
                         }
                     }
