@@ -17,6 +17,7 @@ use SilverStripe\ORM\FieldType\DBHTMLText;
 use SilverStripe\ORM\Map;
 use SilverStripe\ORM\RelationList;
 use stdClass;
+use SilverStripe\Control\Director;
 
 /**
  * Handles all the index management and communication with Algolia. Note that
@@ -110,19 +111,24 @@ class AlgoliaIndexer
     public function exportAttributesFromObject($item)
     {
         $objectImage = '';
-        if (method_exists($item, 'PreviewImage') && $item->PreviewImage() && $item->PreviewImage()->exists()) {
+        if (isset($item->PreviewImage) && $item->PreviewImage() && $item->PreviewImage()->exists()) {
             $objectImage = $item->PreviewImage()->URL;
         } elseif (isset($this->PreviewVideoLowResImageURL) && $item->PreviewVideoLowResImageURL) { // CourseEntry
             $objectImage = $item->PreviewVideoLowResImageURL;
         } elseif (isset($this->VideoLowResImageURL) && $item->VideoLowResImageURL) { // ArchivedWebinar
-           $objectImage = $item->VideoLowResImageURL; 
-        } elseif (method_exists($item, 'FeaturedImage') && $item->FeaturedImage() && $item->FeaturedImage()->exists()) { // BlogPost
+           $objectImage = $item->VideoLowResImageURL;
+        } elseif (isset($item->FeaturedImage) && $item->FeaturedImage() && $item->FeaturedImage()->exists()) { // BlogPost
             $objectImage = $item->FeaturedImage()->URL;
         }
-        
+        if (!empty($objectImage)) {
+            if (substr($objectImage, 0, 1) == '/') $objectImage = substr($objectImage, 1);
+            $objectImage = Director::absoluteBaseURL() . $objectImage;
+            // $objectImage = 'https://www.hpacademy.com/' . $objectImage;
+        }
+
         $objectContent = '';
-        if (isset($this->Content) && !empty($this->Content)) {
-            $objectContent = strip_tags($this->Content);
+        if (isset($item->Content) && !empty($item->Content)) {
+            $objectContent = strip_tags($item->Content);
         }
 
         $toIndex = [

@@ -18,6 +18,7 @@ use Wilr\Silverstripe\Algolia\Jobs\AlgoliaDeleteItemJob;
 use Wilr\Silverstripe\Algolia\Jobs\AlgoliaIndexItemJob;
 use Wilr\SilverStripe\Algolia\Service\AlgoliaIndexer;
 use Wilr\SilverStripe\Algolia\Service\AlgoliaService;
+use SilverStripe\ORM\Queries\SQLUpdate;
 
 class AlgoliaObjectExtension extends DataExtension
 {
@@ -58,11 +59,11 @@ class AlgoliaObjectExtension extends DataExtension
     {
         if ($this->owner->indexEnabled()) {
             $fields->addFieldsToTab(
-                'Root.Search',
+                'Root.AlgoliaSearch',
                 [
                 ReadonlyField::create('AlgoliaIndexed', _t(__CLASS__.'.LastIndexed', 'Last indexed in Algolia'))
                     ->setDescription($this->owner->AlgoliaError),
-                ReadonlyField::create('AlgoliaUUID', _t(__CLASS__.'.UUID', 'Algolia UUID'))
+                ReadonlyField::create('AlgoliaUUID', _t(__CLASS__.'.UUID', 'Algolia objectID'))
                 ]
             );
         }
@@ -266,7 +267,7 @@ class AlgoliaObjectExtension extends DataExtension
 
     public function algoliaUpdateDB($data = [])
     {
-        
+
         $schema = DataObject::getSchema();
         $table = $schema->tableForField($this->owner->ClassName, 'AlgoliaIndexed');
 
@@ -298,7 +299,6 @@ class AlgoliaObjectExtension extends DataExtension
             $update->setTable('"' . $table . '_Live"');
             $update->execute();
         }
-        
 
         return $this->owner;
     }
