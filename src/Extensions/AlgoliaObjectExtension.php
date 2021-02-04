@@ -18,6 +18,7 @@ use Wilr\Silverstripe\Algolia\Jobs\AlgoliaDeleteItemJob;
 use Wilr\Silverstripe\Algolia\Jobs\AlgoliaIndexItemJob;
 use Wilr\SilverStripe\Algolia\Service\AlgoliaIndexer;
 use Wilr\SilverStripe\Algolia\Service\AlgoliaService;
+use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
 use SilverStripe\ORM\Queries\SQLUpdate;
 
 class AlgoliaObjectExtension extends DataExtension
@@ -38,11 +39,11 @@ class AlgoliaObjectExtension extends DataExtension
      */
     private static $use_queued_indexing = false;
 
-    private static $db = [
-        'AlgoliaIndexed' => 'Datetime',
-        'AlgoliaUUID' => 'Varchar(200)',
-        'AlgoliaError' => 'Varchar(200)'
-    ];
+    // private static $db = [
+    //     'AlgoliaIndexed' => 'Datetime',
+    //     'AlgoliaUUID' => 'Varchar(200)',
+    //     'AlgoliaError' => 'Varchar(200)'
+    // ];
 
     /**
      * @return bool
@@ -114,8 +115,7 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function markAsRemovedFromAlgoliaIndex()
     {
-        $this->touchAlgoliaIndexedDate(true)
-            ->algoliaUpdateDB();
+        $this->touchAlgoliaIndexedDate(true);
     }
 
     /**
@@ -123,7 +123,9 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function touchAlgoliaIndexedDate($isDeleted = false)
     {
-        $this->owner->AlgoliaIndexed = $isDeleted ? 'null' : 'NOW()';
+        $this->algoliaUpdateDB([
+            'AlgoliaIndexed' => $isDeleted ? 'null' : date('Y-m-d H:i:s')
+        ]);
 
         return $this->owner;
     }
@@ -160,15 +162,13 @@ class AlgoliaObjectExtension extends DataExtension
 
         try {
             $indexer->indexItem($this->owner);
-            $this->touchAlgoliaIndexedDate()
-                ->algoliaUpdateDB();
+            $this->touchAlgoliaIndexedDate();
 
             return true;
         } catch (Exception $e) {
             Injector::inst()->create(LoggerInterface::class)->error($e);
 
-            $this->owner->AlgoliaError = Convert::raw2sql($e->getMessage());
-            $this->algoliaUpdateDB(['AlgoliaError' => $this->owner->AlgoliaError]);
+            $this->algoliaUpdateDB(['AlgoliaError' => Convert::raw2sql($e->getMessage())]);
 
             return false;
         }
@@ -191,7 +191,8 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function removeFromAlgolia()
     {
-        if (!$this->owner->AlgoliaIndexed) {
+        $algoliaIndex = $this->algoliaGetAlgoliaIndexObject();
+        if (!$algoliaIndex->AlgoliaIndexed) {
             // Not in the index, so skipping
             return false;
         }
@@ -199,14 +200,14 @@ class AlgoliaObjectExtension extends DataExtension
         $indexer = Injector::inst()->get(AlgoliaIndexer::class);
 
         if ($this->config()->get('use_queued_indexing')) {
-            $indexDeleteJob = new AlgoliaDeleteItemJob($this->owner->getClassName(), $this->owner->AlgoliaUUID);
+            $indexDeleteJob = new AlgoliaDeleteItemJob($this->owner->getClassName(), $algoliaIndex->AlgoliaUUID);
 
             QueuedJobService::singleton()->queueJob($indexDeleteJob);
 
             $this->markAsRemovedFromAlgoliaIndex();
         } else {
             try {
-                $indexer->deleteItem($this->owner->getClassName(), $this->owner->AlgoliaUUID);
+                $indexer->deleteItem($this->owner->getClassName(), $algoliaIndex->AlgoliaUUID);
 
                 $this->markAsRemovedFromAlgoliaIndex();
             } catch (Exception $e) {
@@ -226,10 +227,7 @@ class AlgoliaObjectExtension extends DataExtension
 
     public function assignAlgoliaUUID()
     {
-        if (!$this->owner->AlgoliaUUID) {
-            $uuid = Uuid::uuid4();
-            $this->owner->AlgoliaUUID = $uuid->toString();
-        }
+        $this->algoliaGetAlgoliaIndexObject();
 
         return $this->owner;
     }
@@ -268,38 +266,74 @@ class AlgoliaObjectExtension extends DataExtension
     public function algoliaUpdateDB($data = [])
     {
 
-        $schema = DataObject::getSchema();
-        $table = $schema->tableForField($this->owner->ClassName, 'AlgoliaIndexed');
+        $algoliaIndex = $this->algoliaGetAlgoliaIndexObject();
 
-        $update = SQLUpdate::create('"' . $table . '"')->addWhere(['ID' => $this->owner->ID]);
         if (count($data) > 0) {
             foreach ($data as $column => $value) {
-                if ($column == 'AlgoliaIndexed') {
-                    if ($this->owner->AlgoliaIndexed === 'null' || $this->owner->AlgoliaIndexed === 'NOW()') {
-                        $update->assignSQL('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
-                    } else {
-                        $update->assign('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
-                    }
-                } else {
-                    $update->assign('"' . $column . '"', $value);
-                }
+                $algoliaIndex->{$column} = $value;
             }
-        } else {
-            if ($this->owner->AlgoliaIndexed === 'null' || $this->owner->AlgoliaIndexed === 'NOW()') {
-                $update->assignSQL('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
-            } else {
-                $update->assign('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
-            }
-            $update->assign('"AlgoliaError"', $this->owner->AlgoliaError);
-            $update->assign('"AlgoliaUUID"', $this->owner->AlgoliaUUID);
+            $algoliaIndex->write();
         }
-        $update->execute();
+        // } else {
+        //     $algoliaIndex->AlgoliaIndexed = $this->owner->AlgoliaIndexed;
+        //     $algoliaIndex->AlgoliaError = $this->owner->AlgoliaError;
+        //     $algoliaIndex->AlgoliaUUID = $this->owner->AlgoliaUUID;
+        // }
 
-        if ($this->owner->hasExtension('SilverStripe\Versioned\Versioned')) {
-            $update->setTable('"' . $table . '_Live"');
-            $update->execute();
-        }
+
+        // $schema = DataObject::getSchema();
+        // $table = $schema->tableForField($this->owner->ClassName, 'AlgoliaIndexed');
+        //
+        // $update = SQLUpdate::create('"' . $table . '"')->addWhere(['ID' => $this->owner->ID]);
+        // if (count($data) > 0) {
+        //     foreach ($data as $column => $value) {
+        //         if ($column == 'AlgoliaIndexed') {
+        //             if ($this->owner->AlgoliaIndexed === 'null' || $this->owner->AlgoliaIndexed === 'NOW()') {
+        //                 $update->assignSQL('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+        //             } else {
+        //                 $update->assign('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+        //             }
+        //         } else {
+        //             $update->assign('"' . $column . '"', $value);
+        //         }
+        //     }
+        // } else {
+        //     if ($this->owner->AlgoliaIndexed === 'null' || $this->owner->AlgoliaIndexed === 'NOW()') {
+        //         $update->assignSQL('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+        //     } else {
+        //         $update->assign('"AlgoliaIndexed"', $this->owner->AlgoliaIndexed);
+        //     }
+        //     $update->assign('"AlgoliaError"', $this->owner->AlgoliaError);
+        //     $update->assign('"AlgoliaUUID"', $this->owner->AlgoliaUUID);
+        // }
+        // $update->execute();
+        //
+        // if ($this->owner->hasExtension('SilverStripe\Versioned\Versioned')) {
+        //     $update->setTable('"' . $table . '_Live"');
+        //     $update->execute();
+        // }
 
         return $this->owner;
+    }
+
+    public function algoliaGetAlgoliaIndexObject()
+    {
+
+        $algoliaIndex = AlgoliaIndex::get()->filter([
+            'ObjectID' => $this->owner->ID,
+            'ObjectClassName' => $this->owner->ClassName
+        ])->first();
+
+        if (!$algoliaIndex || !$algoliaIndex->exists()) {
+            $algoliaIndex = AlgoliaIndex::create();
+            $algoliaIndex->ObjectID = $this->owner->ID;
+            $algoliaIndex->ObjectClassName = $this->owner->ClassName;
+            $uuid = Uuid::uuid4();
+            $algoliaIndex->AlgoliaUUID = $uuid->toString();
+            $algoliaIndex->AlgoliaIndexed = 'null';
+            $algoliaIndex->write();
+        }
+
+        return $algoliaIndex;
     }
 }

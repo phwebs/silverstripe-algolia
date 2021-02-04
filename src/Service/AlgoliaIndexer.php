@@ -131,6 +131,16 @@ class AlgoliaIndexer
             $objectContent = strip_tags($item->Content);
         }
 
+        $objectMetaTitle = '';
+        if (isset($item->MetaTitle) && !empty($item->MetaTitle)) {
+            $objectMetaTitle = strip_tags($item->MetaTitle);
+        }
+
+        $objectMetaDescription = '';
+        if (isset($item->MetaDescription) && !empty($item->MetaDescription)) {
+            $objectMetaDescription = strip_tags($item->MetaDescription);
+        }
+
         $toIndex = [
             'objectID' => $item->AlgoliaUUID,
             'objectSilverstripeID' => $item->ID,
@@ -142,6 +152,8 @@ class AlgoliaIndexer
             'objectLink' => str_replace(['?stage=Stage', '?stage=Live'], '', $item->AbsoluteLink()),
             'objectContent' => $objectContent,
             'objectImage' => $objectImage,
+            'objectMetaTitle' => $objectMetaTitle,
+            'objectMetaDescription' => $objectMetaDescription,
         ];
 
         if ($this->config()->get('include_page_content')) {

@@ -130,9 +130,7 @@ class AlgoliaReindex extends BuildTask
                     $currentBatches[$batchKey] = [];
                 }
 
-                $item->assignAlgoliaUUID()
-                    ->touchAlgoliaIndexedDate()
-                    ->algoliaUpdateDB();
+                $item->touchAlgoliaIndexedDate();
 
                 $currentBatches[$batchKey][] = $indexer->exportAttributesFromObject($item)->toArray();
 
