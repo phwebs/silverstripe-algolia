@@ -13,13 +13,16 @@ class AlgoliaIndex extends DataObject
         'ObjectClassName' => 'Varchar(255)',
         'AlgoliaIndexed' => 'Datetime',
         'AlgoliaUUID' => 'Varchar(200)',
-        'AlgoliaError' => 'Varchar(200)',
+        'AlgoliaError' => 'Varchar(512)',
     ];
 
     private static $indexes = [
         'Object' => [
             'type' => 'unique',
             'columns' => ['ObjectID', 'ObjectClassName'],
+        ],
+        'AlgoliaUUID' => [
+            'type' => 'unique',
         ],
     ];
 }

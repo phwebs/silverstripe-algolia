@@ -14,6 +14,8 @@ use SilverStripe\ORM\DataObject;
 use SilverStripe\Versioned\Versioned;
 use Wilr\SilverStripe\Algolia\Service\AlgoliaIndexer;
 use Wilr\SilverStripe\Algolia\Service\AlgoliaService;
+use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
+use SilverStripe\ORM\Queries\SQLSelect;
 
 class AlgoliaReindex extends BuildTask
 {
@@ -30,6 +32,8 @@ class AlgoliaReindex extends BuildTask
         Environment::increaseMemoryLimitTo();
         Environment::increaseTimeLimitTo();
 
+        $algoliaIndexTableName = AlgoliaIndex::create()->config()->get('table_name');
+
         $targetClass = '';
         $filter = '';
 
@@ -42,7 +46,8 @@ class AlgoliaReindex extends BuildTask
         }
 
         if (!$request->getVar('forceAll') && !$filter) {
-            $filter = 'AlgoliaIndexed IS NULL';
+            // $filter = 'AlgoliaIndexed IS NULL';
+            $filter = '"' . $algoliaIndexTableName . '"."AlgoliaIndexed" IS NULL';
         }
 
         if ($targetClass) {
@@ -66,16 +71,25 @@ class AlgoliaReindex extends BuildTask
     public function indexClass($targetClass, $filter = '')
     {
         $inst = $targetClass::create();
+        $tableName = $inst->config()->get('table_name');
 
-        if ($inst->hasExtension(Versioned::class)) {
-            $items = Versioned::get_by_stage($targetClass, 'Live', $filter);
-        } else {
-            $items = $inst::get();
+        $algoliaIndexTableName = AlgoliaIndex::create()->config()->get('table_name');
+
+        // Versioned doesn't matter because we are now saving the algolia info into the table "AlgoliaIndex"
+        // if ($inst->hasExtension(Versioned::class)) {
+        //     $tableName .= '_Live';
+        //     $items = Versioned::get_by_stage($targetClass, 'Live', $filter);
+        // } else {
+            $items = $inst::get()
+                ->leftJoin($algoliaIndexTableName, '"' . $tableName . '"."ID" = "' . $algoliaIndexTableName . '"."ObjectID" and "' . $tableName . '"."ClassName" = "' . $algoliaIndexTableName . '"."ObjectClassName"');
 
             if ($filter) {
                 $items = $items->where($filter);
             }
-        }
+        // }
+
+        // echo $items->dataQuery->query();
+        // die();
 
         $algoliaService = Injector::inst()->create(AlgoliaService::class);
         $count = 0;
@@ -120,7 +134,7 @@ class AlgoliaReindex extends BuildTask
 
                 if (!$instance || !$instance->canIndexInAlgolia()) {
                     $skipped++;
-
+                    // echo ' skipping ';
                     continue;
                 }
 
@@ -137,6 +151,7 @@ class AlgoliaReindex extends BuildTask
                 $count++;
 
                 if (count($currentBatches[$batchKey]) >= $batchSize) {
+
                     $this->indexBatch($currentBatches[$batchKey]);
 
                     unset($currentBatches[$batchKey]);

@@ -45,6 +45,8 @@ class AlgoliaObjectExtension extends DataExtension
     //     'AlgoliaError' => 'Varchar(200)'
     // ];
 
+    public $algoliaIndexObject = null;
+
     /**
      * @return bool
      */
@@ -59,12 +61,13 @@ class AlgoliaObjectExtension extends DataExtension
     public function updateSettingsFields(FieldList $fields)
     {
         if ($this->owner->indexEnabled()) {
+            $algoliaIndex = $this->algoliaGetAlgoliaIndexObject();
             $fields->addFieldsToTab(
                 'Root.AlgoliaSearch',
                 [
-                ReadonlyField::create('AlgoliaIndexed', _t(__CLASS__.'.LastIndexed', 'Last indexed in Algolia'))
-                    ->setDescription($this->owner->AlgoliaError),
-                ReadonlyField::create('AlgoliaUUID', _t(__CLASS__.'.UUID', 'Algolia objectID'))
+                ReadonlyField::create('AlgoliaIndexed', _t(__CLASS__.'.LastIndexed', 'Last indexed in Algolia'), $algoliaIndex->AlgoliaIndexed)
+                    ->setDescription($algoliaIndex->AlgoliaError),
+                ReadonlyField::create('AlgoliaUUID', _t(__CLASS__.'.UUID', 'Algolia objectID'), $algoliaIndex->AlgoliaUUID)
                 ]
             );
         }
@@ -124,7 +127,8 @@ class AlgoliaObjectExtension extends DataExtension
     public function touchAlgoliaIndexedDate($isDeleted = false)
     {
         $this->algoliaUpdateDB([
-            'AlgoliaIndexed' => $isDeleted ? 'null' : date('Y-m-d H:i:s')
+            'AlgoliaIndexed' => $isDeleted ? null : date('Y-m-d H:i:s'),
+            'AlgoliaError' => null,
         ]);
 
         return $this->owner;
@@ -245,13 +249,13 @@ class AlgoliaObjectExtension extends DataExtension
     /**
      * Ensure each record has unique UUID
      */
-    public function onBeforeDuplicate()
-    {
-        $this->owner->AlgoliaUUID = null;
-        $this->owner->assignAlgoliaUUID();
-        $this->owner->AlgoliaIndexed = null;
-        $this->owner->AlgoliaError = null;
-    }
+    // public function onBeforeDuplicate()
+    // {
+    //     $this->owner->AlgoliaUUID = null;
+    //     $this->owner->assignAlgoliaUUID();
+    //     $this->owner->AlgoliaIndexed = null;
+    //     $this->owner->AlgoliaError = null;
+    // }
 
     /**
      * @return array
@@ -267,7 +271,6 @@ class AlgoliaObjectExtension extends DataExtension
     {
 
         $algoliaIndex = $this->algoliaGetAlgoliaIndexObject();
-
         if (count($data) > 0) {
             foreach ($data as $column => $value) {
                 $algoliaIndex->{$column} = $value;
@@ -318,22 +321,24 @@ class AlgoliaObjectExtension extends DataExtension
 
     public function algoliaGetAlgoliaIndexObject()
     {
+        if (!$this->owner->algoliaIndexObject) {
+            $algoliaIndex = AlgoliaIndex::get()->filter([
+                'ObjectID' => $this->owner->ID,
+                'ObjectClassName' => $this->owner->ClassName
+            ])->first();
 
-        $algoliaIndex = AlgoliaIndex::get()->filter([
-            'ObjectID' => $this->owner->ID,
-            'ObjectClassName' => $this->owner->ClassName
-        ])->first();
-
-        if (!$algoliaIndex || !$algoliaIndex->exists()) {
-            $algoliaIndex = AlgoliaIndex::create();
-            $algoliaIndex->ObjectID = $this->owner->ID;
-            $algoliaIndex->ObjectClassName = $this->owner->ClassName;
-            $uuid = Uuid::uuid4();
-            $algoliaIndex->AlgoliaUUID = $uuid->toString();
-            $algoliaIndex->AlgoliaIndexed = 'null';
-            $algoliaIndex->write();
+            if (!$algoliaIndex || !$algoliaIndex->exists()) {
+                $algoliaIndex = AlgoliaIndex::create();
+                $algoliaIndex->ObjectID = $this->owner->ID;
+                $algoliaIndex->ObjectClassName = $this->owner->ClassName;
+                $uuid = Uuid::uuid4();
+                $algoliaIndex->AlgoliaUUID = $uuid->toString();
+                $algoliaIndex->AlgoliaIndexed = null;
+                $algoliaIndex->write();
+            }
+            $this->owner->algoliaIndexObject = $algoliaIndex;
         }
 
-        return $algoliaIndex;
+        return $this->owner->algoliaIndexObject;
     }
 }

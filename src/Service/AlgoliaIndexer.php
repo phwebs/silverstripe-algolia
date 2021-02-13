@@ -18,6 +18,9 @@ use SilverStripe\ORM\Map;
 use SilverStripe\ORM\RelationList;
 use stdClass;
 use SilverStripe\Control\Director;
+use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
+use SilverStripe\BBCodeParser\BBCodeParser;
+use hpa\forum\Post;
 
 /**
  * Handles all the index management and communication with Algolia. Note that
@@ -110,25 +113,39 @@ class AlgoliaIndexer
      */
     public function exportAttributesFromObject($item)
     {
+        // https://docs.silverstripe.org/en/4/developer_guides/files/images/#image
         $objectImage = '';
         if (isset($item->PreviewImage) && $item->PreviewImage() && $item->PreviewImage()->exists()) {
-            $objectImage = $item->PreviewImage()->URL;
-        } elseif (isset($this->PreviewVideoLowResImageURL) && $item->PreviewVideoLowResImageURL) { // CourseEntry
-            $objectImage = $item->PreviewVideoLowResImageURL;
-        } elseif (isset($this->VideoLowResImageURL) && $item->VideoLowResImageURL) { // ArchivedWebinar
-           $objectImage = $item->VideoLowResImageURL;
+            $image = $item->PreviewImage()->Pad(400, 400);
+            if ($image) {
+                $objectImage = $image->AbsoluteURL;
+            }
+        } elseif (isset($item->PreviewVideoMedResImageURL) && $item->PreviewVideoMedResImageURL) { // CourseEntry
+            $objectImage = $item->PreviewVideoMedResImageURL;
+        } elseif (isset($item->VideoMedResImageURL) && $item->VideoMedResImageURL) { // ArchivedWebinar
+            $objectImage = $item->VideoMedResImageURL;
         } elseif (isset($item->FeaturedImage) && $item->FeaturedImage() && $item->FeaturedImage()->exists()) { // BlogPost
-            $objectImage = $item->FeaturedImage()->URL;
-        }
-        if (!empty($objectImage)) {
-            if (substr($objectImage, 0, 1) == '/') $objectImage = substr($objectImage, 1);
-            // $objectImage = Director::absoluteBaseURL() . $objectImage;
-            $objectImage = 'https://www.hpacademy.com/' . $objectImage;
+            $image = $item->FeaturedImage()->Pad(400, 400);
+            if ($image) {
+                $objectImage = $image->AbsoluteURL;
+            }
         }
 
         $objectContent = '';
         if (isset($item->Content) && !empty($item->Content)) {
-            $objectContent = strip_tags($item->Content);
+            $contentObject = $item->dbObject('Content');
+            if (get_class($item) === Post::class) {
+                $objectContent = $contentObject->Parse(BBCodeParser::class);
+            } else {
+                $objectContent = $contentObject->RAW();
+            }
+            $objectContent = str_replace('><', '> <', $objectContent);
+            $objectContent = strip_tags($objectContent);
+            $objectContent = \html_entity_decode($objectContent);
+            $objectContent = preg_replace('~\s+~', ' ', $objectContent);
+            // echo $objectContent;
+            // echo "\n\n";
+            // die();
         }
 
         $objectMetaTitle = '';
@@ -141,10 +158,11 @@ class AlgoliaIndexer
             $objectMetaDescription = strip_tags($item->MetaDescription);
         }
 
+        $algoliaIndex = $item->algoliaGetAlgoliaIndexObject();
         $toIndex = [
-            'objectID' => $item->AlgoliaUUID,
+            'objectID' => $algoliaIndex->AlgoliaUUID,
             'objectSilverstripeID' => $item->ID,
-            'objectTitle' => (string) $item->Title,
+            'objectTitle' => (string)$item->Title,
             'objectClassName' => get_class($item),
             'objectClassNameHierarchy' => array_values(ClassInfo::ancestry(get_class($item))),
             'objectLastEdited' => $item->dbObject('LastEdited')->getTimestamp(),
@@ -299,8 +317,13 @@ class AlgoliaIndexer
      */
     public function deleteItem($itemClass, $itemUUID)
     {
-        $item = DataObject::get_one($itemClass, ['AlgoliaUUID' => $itemUUID]);
 
+        $algoliaIndex = DataObject::get_one(AlgoliaIndex::class, ['AlgoliaUUID' => $itemUUID]);
+        if (!$algoliaIndex || !$algoliaIndex->isInDB()) {
+            return false;
+        }
+
+        $item = $algoliaIndex->ObjectClassName::get()->byID($algoliaIndex->ObjectID);
         if (!$item || !$item->isInDB()) {
             return false;
         }
@@ -308,7 +331,7 @@ class AlgoliaIndexer
         $searchIndexes = $this->getService()->initIndexes();
 
         foreach ($searchIndexes as $key => $searchIndex) {
-            $searchIndex->deleteObject($item->AlgoliaUUID);
+            $searchIndex->deleteObject($algoliaIndex->AlgoliaUUID);
         }
 
         return true;
