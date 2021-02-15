@@ -244,6 +244,9 @@ class AlgoliaObjectExtension extends DataExtension
         if ($this->owner->indexEnabled()) {
             $this->removeFromAlgolia();
         }
+
+        $algoliaIndex = $this->algoliaGetAlgoliaIndexObject();
+        $algoliaIndex->delete();
     }
 
     /**
@@ -327,7 +330,7 @@ class AlgoliaObjectExtension extends DataExtension
                 'ObjectClassName' => $this->owner->ClassName
             ])->first();
 
-            if (!$algoliaIndex || !$algoliaIndex->exists()) {
+            if (!$algoliaIndex || !$algoliaIndex->exists() && $this->owner->ID > 0) {
                 $algoliaIndex = AlgoliaIndex::create();
                 $algoliaIndex->ObjectID = $this->owner->ID;
                 $algoliaIndex->ObjectClassName = $this->owner->ClassName;
