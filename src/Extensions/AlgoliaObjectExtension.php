@@ -87,6 +87,12 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function canIndexInAlgolia(): bool
     {
+        if (!$this->owner->isPublished()) {
+            $this->removeFromAlgolia();
+            
+            return false;
+        }
+
         if ($this->owner->hasField('ShowInSearch')) {
             return $this->owner->ShowInSearch;
         }
