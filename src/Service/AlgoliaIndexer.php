@@ -115,7 +115,7 @@ class AlgoliaIndexer
     {
         // https://docs.silverstripe.org/en/4/developer_guides/files/images/#image
         $objectImage = '';
-        if (isset($item->PreviewImage) && $item->PreviewImage() && $item->PreviewImage()->exists()) {
+        if ($item->hasMethod('PreviewImage') && $item->PreviewImage()->exists()) {
             $image = $item->PreviewImage()->Pad(400, 400);
             if ($image) {
                 $objectImage = $image->AbsoluteURL;
@@ -124,7 +124,7 @@ class AlgoliaIndexer
             $objectImage = $item->PreviewVideoMedResImageURL;
         } elseif (isset($item->VideoMedResImageURL) && $item->VideoMedResImageURL) { // ArchivedWebinar
             $objectImage = $item->VideoMedResImageURL;
-        } elseif (isset($item->FeaturedImage) && $item->FeaturedImage() && $item->FeaturedImage()->exists()) { // BlogPost
+        } elseif ($item->hasMethod('FeaturedImage') && $item->FeaturedImage()->exists()) { // BlogPost
             $image = $item->FeaturedImage()->Pad(400, 400);
             if ($image) {
                 $objectImage = $image->AbsoluteURL;
@@ -158,6 +158,13 @@ class AlgoliaIndexer
             $objectMetaDescription = strip_tags($item->MetaDescription);
         }
 
+        $filterIDs = [];
+        if ($item->hasMethod('Filters') && $item->Filters()->count()) {
+            foreach ($item->PageFilters() as $pageFilter) {
+                $filterIDs[] = $pageFilter->ID;
+            }
+        }
+
         $algoliaIndex = $item->algoliaGetAlgoliaIndexObject();
         $toIndex = [
             'objectID' => $algoliaIndex->AlgoliaUUID,
@@ -172,6 +179,7 @@ class AlgoliaIndexer
             'objectImage' => $objectImage,
             'objectMetaTitle' => $objectMetaTitle,
             'objectMetaDescription' => $objectMetaDescription,
+            'objectFilterIDs' => $filterIDs,
         ];
 
         if ($this->config()->get('include_page_content')) {
