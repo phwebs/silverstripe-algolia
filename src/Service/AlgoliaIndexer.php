@@ -160,8 +160,8 @@ class AlgoliaIndexer
 
         $filterIDs = [];
         if ($item->hasMethod('Filters') && $item->Filters()->count()) {
-            foreach ($item->PageFilters() as $pageFilter) {
-                $filterIDs[] = $pageFilter->ID;
+            foreach ($item->Filters() as $filter) {
+                $filterIDs[] = $filter->ID;
             }
         }
 
@@ -181,6 +181,11 @@ class AlgoliaIndexer
             'objectMetaDescription' => $objectMetaDescription,
             'objectFilterIDs' => $filterIDs,
         ];
+
+        // ob_start();
+        // var_dump($toIndex);
+        // $contents = ob_get_clean();
+        // file_put_contents('/home/ubuntu/host-dirs/debug.log', $contents . "\n", FILE_APPEND);
 
         if ($this->config()->get('include_page_content')) {
             $toIndex['objectForTemplate'] =

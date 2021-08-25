@@ -20,6 +20,7 @@ use Wilr\SilverStripe\Algolia\Service\AlgoliaIndexer;
 use Wilr\SilverStripe\Algolia\Service\AlgoliaService;
 use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
 use SilverStripe\ORM\Queries\SQLUpdate;
+use SilverStripe\Versioned\Versioned;
 
 class AlgoliaObjectExtension extends DataExtension
 {
@@ -46,6 +47,7 @@ class AlgoliaObjectExtension extends DataExtension
     // ];
 
     public $algoliaIndexObject = null;
+    public $isOnAfterWrite = false;
 
     /**
      * @return bool
@@ -89,7 +91,7 @@ class AlgoliaObjectExtension extends DataExtension
     {
         if (!$this->owner->isPublished()) {
             $this->removeFromAlgolia();
-            
+
             return false;
         }
 
@@ -106,15 +108,35 @@ class AlgoliaObjectExtension extends DataExtension
      */
     public function onAfterPublish()
     {
+        $this->indexInAlgoliaOnWritePublish();
+    }
+
+    // So that if only a many_many is changed it gets updated in algolia
+    // many_many's don't trigger onAfterPublish if nothing else on the object is changed
+    public function onAfterWrite()
+    {
+        $skipClasses = [
+            \hpa\forum\Post::class,
+            \hpa\forum\ForumThread::class
+        ];
+        if (!in_array(get_class($this->owner), $skipClasses)) {
+            $this->isOnAfterWrite = true;
+            $this->indexInAlgoliaOnWritePublish();
+        }
+
+        parent::onAfterWrite();
+    }
+
+    public function indexInAlgoliaOnWritePublish()
+    {
         if (min($this->owner->invokeWithExtensions('canIndexInAlgolia')) == false) {
             $this->owner->removeFromAlgolia();
         } else {
             // check to see if the classname changed, if it has then it might
             // need to be removed from other indexes before being re-added
-            if ($this->owner->isChanged('ClassName')) {
+            if (!$this->isOnAfterWrite && $this->owner->isChanged('ClassName')) {
                 $this->owner->removeFromAlgolia();
             }
-
             $this->owner->indexInAlgolia();
         }
     }
@@ -171,7 +193,12 @@ class AlgoliaObjectExtension extends DataExtension
         $indexer = Injector::inst()->get(AlgoliaIndexer::class);
 
         try {
-            $indexer->indexItem($this->owner);
+            $item = $this->owner;
+            if ($this->isOnAfterWrite && $this->owner->hasExtension(Versioned::class)) {
+                // Get the live version
+                $item = Versioned::get_by_stage(get_class($this->owner), Versioned::LIVE)->byID($this->owner->ID);
+            }
+            $indexer->indexItem($item);
             $this->touchAlgoliaIndexedDate();
 
             return true;
@@ -179,7 +206,6 @@ class AlgoliaObjectExtension extends DataExtension
             Injector::inst()->create(LoggerInterface::class)->error($e);
 
             $this->algoliaUpdateDB(['AlgoliaError' => Convert::raw2sql($e->getMessage())]);
-
             return false;
         }
     }
