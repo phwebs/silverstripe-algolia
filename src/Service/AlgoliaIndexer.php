@@ -115,15 +115,18 @@ class AlgoliaIndexer
     {
         // https://docs.silverstripe.org/en/4/developer_guides/files/images/#image
         $objectImage = '';
-        if ($item->hasMethod('PreviewImage') && $item->PreviewImage()->exists()) {
+        // Need to check if there is a vimeo video URL before checking for the PreviewImage
+        // The vimeo video URL is a more relavant image than the PreviewImage on ArchivedWebinars
+        // The ArchivedWebinar's PreviewImage is the same on many of them
+        if (isset($item->PreviewVideoMedResImageURL) && $item->PreviewVideoMedResImageURL) { // CourseEntry
+            $objectImage = $item->PreviewVideoMedResImageURL;
+        } elseif (isset($item->VideoMedResImageURL) && $item->VideoMedResImageURL) { // ArchivedWebinar
+            $objectImage = $item->VideoMedResImageURL;
+        } elseif ($item->hasMethod('PreviewImage') && $item->PreviewImage()->exists()) {
             $image = $item->PreviewImage()->Pad(400, 400);
             if ($image) {
                 $objectImage = $image->AbsoluteURL;
             }
-        } elseif (isset($item->PreviewVideoMedResImageURL) && $item->PreviewVideoMedResImageURL) { // CourseEntry
-            $objectImage = $item->PreviewVideoMedResImageURL;
-        } elseif (isset($item->VideoMedResImageURL) && $item->VideoMedResImageURL) { // ArchivedWebinar
-            $objectImage = $item->VideoMedResImageURL;
         } elseif ($item->hasMethod('FeaturedImage') && $item->FeaturedImage()->exists()) { // BlogPost
             $image = $item->FeaturedImage()->Pad(400, 400);
             if ($image) {
