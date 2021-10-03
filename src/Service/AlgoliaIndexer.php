@@ -142,6 +142,12 @@ class AlgoliaIndexer
             } else {
                 $objectContent = $contentObject->RAW();
             }
+
+            if (isset($item->SubTitles) && $item->SubTitles) {
+                $subTitlesObject = $item->dbObject('SubTitles');
+                $objectContent .= "\n\n" . $subTitlesObject->RAW();
+            }
+
             $objectContent = str_replace('><', '> <', $objectContent);
             $objectContent = strip_tags($objectContent);
             $objectContent = \html_entity_decode($objectContent);
