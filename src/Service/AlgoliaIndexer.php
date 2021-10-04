@@ -142,20 +142,21 @@ class AlgoliaIndexer
             } else {
                 $objectContent = $contentObject->RAW();
             }
-
-            if (isset($item->SubTitles) && $item->SubTitles) {
-                $subTitlesObject = $item->dbObject('SubTitles');
-                $objectContent .= "\n\n" . $subTitlesObject->RAW();
-            }
-
-            $objectContent = str_replace('><', '> <', $objectContent);
-            $objectContent = strip_tags($objectContent);
-            $objectContent = \html_entity_decode($objectContent);
-            $objectContent = preg_replace('~\s+~', ' ', $objectContent);
-            // echo $objectContent;
-            // echo "\n\n";
-            // die();
         }
+
+        if (isset($item->SubTitles) && $item->SubTitles) {
+            $subTitlesObject = $item->dbObject('SubTitles');
+            $objectContent .= "\n\n" . $subTitlesObject->RAW();
+        }
+
+        $objectContent = str_replace('><', '> <', $objectContent);
+        $objectContent = strip_tags($objectContent);
+        $objectContent = \html_entity_decode($objectContent);
+        $objectContent = preg_replace('~\s+~', ' ', $objectContent);
+
+        // echo $objectContent;
+        // echo "\n\n";
+        // die();
 
         $objectMetaTitle = '';
         if (isset($item->MetaTitle) && !empty($item->MetaTitle)) {
