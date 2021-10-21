@@ -21,6 +21,7 @@ use SilverStripe\Control\Director;
 use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
 use SilverStripe\BBCodeParser\BBCodeParser;
 use hpa\forum\Post;
+use hpa\mysite\CourseComponent;
 
 /**
  * Handles all the index management and communication with Algolia. Note that
@@ -113,6 +114,9 @@ class AlgoliaIndexer
      */
     public function exportAttributesFromObject($item)
     {
+        $className = get_class($item);
+        $title = (string)$item->Title;
+
         // https://docs.silverstripe.org/en/4/developer_guides/files/images/#image
         $objectImage = '';
         // Need to check if there is a vimeo video URL before checking for the PreviewImage
@@ -137,7 +141,7 @@ class AlgoliaIndexer
         $objectContent = '';
         if (isset($item->Content) && !empty($item->Content)) {
             $contentObject = $item->dbObject('Content');
-            if (get_class($item) === Post::class) {
+            if ($className === Post::class) {
                 $objectContent = $contentObject->Parse(BBCodeParser::class);
             } else {
                 $objectContent = $contentObject->RAW();
@@ -146,7 +150,7 @@ class AlgoliaIndexer
 
         if (isset($item->SubTitles) && $item->SubTitles) {
             $subTitlesObject = $item->dbObject('SubTitles');
-            $objectContent .= "\n\n" . $subTitlesObject->RAW();
+            $objectContent .= (!empty($objectContent) ? "\n\n" : '') . $subTitlesObject->RAW();
         }
 
         $objectContent = str_replace('><', '> <', $objectContent);
@@ -174,17 +178,21 @@ class AlgoliaIndexer
                 $filterIDs[] = $filter->ID;
             }
         }
+        
+        if ($className === CourseComponent::class) {
+            $title = $item->getMetaTitle();
+        }
 
         $algoliaIndex = $item->algoliaGetAlgoliaIndexObject();
         $toIndex = [
             'objectID' => $algoliaIndex->AlgoliaUUID,
             'objectSilverstripeID' => $item->ID,
-            'objectTitle' => (string)$item->Title,
-            'objectClassName' => get_class($item),
-            'objectClassNameHierarchy' => array_values(ClassInfo::ancestry(get_class($item))),
+            'objectTitle' => $title,
+            'objectClassName' => $className,
+            'objectClassNameHierarchy' => array_values(ClassInfo::ancestry($className)),
             'objectLastEdited' => $item->dbObject('LastEdited')->getTimestamp(),
             'objectCreated' => $item->dbObject('Created')->getTimestamp(),
-            'objectLink' => str_replace(['?stage=Stage', '?stage=Live'], '', $item->AbsoluteLink()),
+            'objectLink' => str_replace(['?stage=Stage', '?stage=Live'], '', $item->Link()),
             'objectContent' => $objectContent,
             'objectImage' => $objectImage,
             'objectMetaTitle' => $objectMetaTitle,
