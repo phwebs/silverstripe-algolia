@@ -158,6 +158,10 @@ class AlgoliaIndexer
         $objectContent = \html_entity_decode($objectContent);
         $objectContent = preg_replace('~\s+~', ' ', $objectContent);
 
+        if (strlen($objectContent) > 90000) { // index can be max size of 100,000 bytes
+            $objectContent = substr($objectContent, 0, 90000);
+        }
+
         // echo $objectContent;
         // echo "\n\n";
         // die();
