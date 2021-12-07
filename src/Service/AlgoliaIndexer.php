@@ -153,6 +153,13 @@ class AlgoliaIndexer
             $objectContent .= (!empty($objectContent) ? "\n\n" : '') . $subTitlesObject->RAW();
         }
 
+        if ($item->hasMethod('AlgoliaExtraContent')) {
+            $extraContent = $item->AlgoliaExtraContent();
+            if (!empty($extraContent)) {
+                $objectContent .= (!empty($objectContent) ? "\n\n" : '') . $extraContent;
+            }
+        }
+
         $objectContent = str_replace('><', '> <', $objectContent);
         $objectContent = strip_tags($objectContent);
         $objectContent = \html_entity_decode($objectContent);
@@ -182,7 +189,7 @@ class AlgoliaIndexer
                 $filterIDs[] = $filter->ID;
             }
         }
-        
+
         if ($className === CourseComponent::class) {
             $title = $item->getMetaTitle();
         }
