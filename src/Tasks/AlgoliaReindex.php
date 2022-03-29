@@ -80,8 +80,10 @@ class AlgoliaReindex extends BuildTask
         //     $tableName .= '_Live';
         //     $items = Versioned::get_by_stage($targetClass, 'Live', $filter);
         // } else {
+            // $leftJoinSql = '"' . $tableName . '"."ID" = "' . $algoliaIndexTableName . '"."ObjectID" and "' . $tableName . '"."ClassName" = "' . $algoliaIndexTableName . '"."ObjectClassName"';
+            $leftJoinSql = '"' . $tableName . '"."ID" = "' . $algoliaIndexTableName . '"."ObjectID" and "' . $algoliaIndexTableName . '"."ObjectClassName" = \'' . $inst->CLassName . '\'';
             $items = $inst::get()
-                ->leftJoin($algoliaIndexTableName, '"' . $tableName . '"."ID" = "' . $algoliaIndexTableName . '"."ObjectID" and "' . $tableName . '"."ClassName" = "' . $algoliaIndexTableName . '"."ObjectClassName"');
+                ->leftJoin($algoliaIndexTableName, $leftJoinSql);
 
             if ($filter) {
                 $items = $items->where($filter);
