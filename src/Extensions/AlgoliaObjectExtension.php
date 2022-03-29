@@ -21,6 +21,7 @@ use Wilr\SilverStripe\Algolia\Service\AlgoliaService;
 use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
 use SilverStripe\ORM\Queries\SQLUpdate;
 use SilverStripe\Versioned\Versioned;
+use SilverStripe\Core\Config\Config;
 
 class AlgoliaObjectExtension extends DataExtension
 {
@@ -67,9 +68,10 @@ class AlgoliaObjectExtension extends DataExtension
             $fields->addFieldsToTab(
                 'Root.AlgoliaSearch',
                 [
-                ReadonlyField::create('AlgoliaIndexed', _t(__CLASS__.'.LastIndexed', 'Last indexed in Algolia'), $algoliaIndex->AlgoliaIndexed)
-                    ->setDescription($algoliaIndex->AlgoliaError),
-                ReadonlyField::create('AlgoliaUUID', _t(__CLASS__.'.UUID', 'Algolia objectID'), $algoliaIndex->AlgoliaUUID)
+                    ReadonlyField::create('AlgoliaCanIndex', _t(__CLASS__.'.CanIndex', 'Can index in Algolia'), ($this->canIndexInAlgolia() ? 'Yes' : 'No'))->setDescription('I am limiting what is indexed in Algolia by what is set in includeClasses in mysite/_config/algolia.yml. I don\'t want to add every page to Algolia because it\'s hard to exclude them from the search when using the refinementList widget with instantSearch.js'),
+                    ReadonlyField::create('AlgoliaIndexed', _t(__CLASS__.'.LastIndexed', 'Last indexed in Algolia'), $algoliaIndex->AlgoliaIndexed)
+                        ->setDescription($algoliaIndex->AlgoliaError),
+                    ReadonlyField::create('AlgoliaUUID', _t(__CLASS__.'.UUID', 'Algolia objectID'), $algoliaIndex->AlgoliaUUID)
                 ]
             );
         }
@@ -94,6 +96,11 @@ class AlgoliaObjectExtension extends DataExtension
 
             return false;
         }
+
+        // This returns any indexes this page can be added to. An empty array is returned if it cannot be indexed.
+        $algolia = Injector::inst()->get(AlgoliaService::class);
+        $searchIndexes = $algolia->initIndexes($this->owner);
+        if (!count($searchIndexes)) return false;
 
         if ($this->owner->hasField('ShowInSearch')) {
             return $this->owner->ShowInSearch;
