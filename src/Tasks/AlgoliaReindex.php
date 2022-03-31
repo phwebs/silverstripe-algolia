@@ -81,7 +81,7 @@ class AlgoliaReindex extends BuildTask
         //     $items = Versioned::get_by_stage($targetClass, 'Live', $filter);
         // } else {
             // $leftJoinSql = '"' . $tableName . '"."ID" = "' . $algoliaIndexTableName . '"."ObjectID" and "' . $tableName . '"."ClassName" = "' . $algoliaIndexTableName . '"."ObjectClassName"';
-            $leftJoinSql = '"' . $tableName . '"."ID" = "' . $algoliaIndexTableName . '"."ObjectID" and "' . $algoliaIndexTableName . '"."ObjectClassName" = \'' . $inst->CLassName . '\'';
+            $leftJoinSql = '"' . $tableName . '"."ID" = "' . $algoliaIndexTableName . '"."ObjectID" and "' . $algoliaIndexTableName . '"."ObjectClassName" = \'' . addslashes($inst->CLassName) . '\'';
             $items = $inst::get()
                 ->leftJoin($algoliaIndexTableName, $leftJoinSql);
 

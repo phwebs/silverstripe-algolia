@@ -21,7 +21,13 @@ use SilverStripe\Control\Director;
 use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
 use SilverStripe\BBCodeParser\BBCodeParser;
 use hpa\forum\Post;
+use SilverStripe\Blog\Model\BlogPost;
 use hpa\mysite\CourseComponent;
+use hpa\mysite\CourseEntry;
+use hpa\mysite\TechArticle;
+use hpa\mysite\OwnedCourse;
+use hpa\mysite\ArchivedWebinar;
+use hpa\mysite\QAndAVideoPage;
 
 /**
  * Handles all the index management and communication with Algolia. Note that
@@ -194,6 +200,48 @@ class AlgoliaIndexer
             $title = $item->getMetaTitle();
         }
 
+        $jsonData = '';
+        $extraDataArray = [];
+        if ($className === CourseEntry::class) {
+            $modulesCount = (int)$item->Modules()->Count();
+            $modulesCountString = $modulesCount . ' module' . ($modulesCount == 1 ? '' : 's');
+            $studentsEnrolledCount = OwnedCourse::get()->filter([
+                'CourseID' => $item->ID,
+            ])->Count();
+            $studentsEnrolledCountString = $studentsEnrolledCount . ' student' . ($studentsEnrolledCount == 1 ? '' : 's') . ' enrolled';
+            $extraDataArray = [
+                'ModulesCount' => $modulesCountString,
+                'StudentsEnrolledCount' => $studentsEnrolledCountString,
+                'CompetencyLevel' => $item->CompetencyLevel,
+                'UnitPrice' => $item->UnitPrice,
+            ];
+        } elseif ($className === ArchivedWebinar::class || $className === QAndAVideoPage::class) {
+            if ($item->VideoDuration > 0) {
+                $extraDataArray = [
+                    'VideoDuration' => $item->VideoTime(),
+                ];
+            }
+        } elseif ($className === BlogPost::class || $className === TechArticle::class) {
+            $content = strip_tags($item->Content);
+            if (!empty($content)) {
+                $wordCount = str_word_count($content);
+                $mintues = floor($wordCount / 200);
+                if ($mintues > 0) {
+                    $estimatedReadingTime = $mintues . ' minute' . ($mintues == 1 ? '' : 's');
+                } else {
+                    $estimatedReadingTime = '1 minute';
+                }
+                $extraDataArray = [
+                    'EstimatedReadingTime' => $estimatedReadingTime,
+                ];
+
+            }
+        }
+
+        // if (is_array($jsonDataArray) && count($jsonDataArray)) {
+        //     $jsonData = json_encode($jsonDataArray);
+        // }
+
         $algoliaIndex = $item->algoliaGetAlgoliaIndexObject();
         $toIndex = [
             'objectID' => $algoliaIndex->AlgoliaUUID,
@@ -209,6 +257,7 @@ class AlgoliaIndexer
             'objectMetaTitle' => $objectMetaTitle,
             'objectMetaDescription' => $objectMetaDescription,
             'objectFilterIDs' => $filterIDs,
+            'objectExtraData' => $extraDataArray,
         ];
 
         // ob_start();
