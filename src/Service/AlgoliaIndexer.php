@@ -20,14 +20,6 @@ use stdClass;
 use SilverStripe\Control\Director;
 use Wilr\SilverStripe\Algolia\DataObject\AlgoliaIndex;
 use SilverStripe\BBCodeParser\BBCodeParser;
-use hpa\forum\Post;
-use SilverStripe\Blog\Model\BlogPost;
-use hpa\mysite\CourseComponent;
-use hpa\mysite\CourseEntry;
-use hpa\mysite\TechArticle;
-use hpa\mysite\OwnedCourse;
-use hpa\mysite\ArchivedWebinar;
-use hpa\mysite\QAndAVideoPage;
 
 /**
  * Handles all the index management and communication with Algolia. Note that
@@ -120,145 +112,51 @@ class AlgoliaIndexer
      */
     public function exportAttributesFromObject($item)
     {
-        $className = get_class($item);
-        $title = (string)$item->Title;
 
-        // https://docs.silverstripe.org/en/4/developer_guides/files/images/#image
-        $objectImage = '';
-        // Need to check if there is a vimeo video URL before checking for the PreviewImage
-        // The vimeo video URL is a more relavant image than the PreviewImage on ArchivedWebinars
-        // The ArchivedWebinar's PreviewImage is the same on many of them
-        if (isset($item->PreviewVideoMedResImageURL) && $item->PreviewVideoMedResImageURL) { // CourseEntry
-            $objectImage = $item->PreviewVideoMedResImageURL;
-        } elseif (isset($item->VideoMedResImageURL) && $item->VideoMedResImageURL) { // ArchivedWebinar
-            $objectImage = $item->VideoMedResImageURL;
-        } elseif ($item->hasMethod('PreviewImage') && $item->PreviewImage()->exists()) {
-            $image = $item->PreviewImage()->Pad(400, 400);
-            if ($image) {
-                $objectImage = $image->AbsoluteURL;
-            }
-        } elseif ($item->hasMethod('FeaturedImage') && $item->FeaturedImage()->exists()) { // BlogPost
-            $image = $item->FeaturedImage()->Pad(400, 400);
-            if ($image) {
-                $objectImage = $image->AbsoluteURL;
-            }
-        }
+        if ($item->hasMethod('getAlgoliaIndexArray')) {
+            $toIndex = $item->getAlgoliaIndexArray();
+        } else {
+            $className = get_class($item);
+            $algoliaIndex = $item->algoliaGetAlgoliaIndexObject();
+            $objectTitle = $item->hasMethod('getAlgoliaObjectTitle') ? $item->getAlgoliaObjectTitle() : $item->Title;
+            $objectContent = $item->hasMethod('getAlgoliaObjectContent') ? $item->getAlgoliaObjectContent() : $item->Content;
+            $objectImage = $item->hasMethod('getAlgoliaObjectImage') ? $item->getAlgoliaObjectImage() : '';
+            $objectMetaTitle = $item->hasMethod('getAlgoliaObjectMetaTitle') ? $item->getAlgoliaObjectMetaTitle() : $item->MetaTitle;
+            $objectMetaDescription = $item->hasMethod('getAlgoliaObjectMetaDescription') ? $item->getAlgoliaObjectMetaDescription() : $item->MetaDescription;
+            $objectFilterIDs = $item->hasMethod('getAlgoliaObjectFilterIDs') ? $item->getAlgoliaObjectFilterIDs() : [];
+            $objectExtraData = $item->hasMethod('getAlgoliaObjectExtraData') ? $item->getAlgoliaObjectExtraData() : [];
+            $objectGroupID = $item->hasMethod('getAlgoliaObjectGroupID') ? $item->getAlgoliaObjectGroupID() : '';
+            $objectLink = $item->hasMethod('getObjectLink') ? $item->getObjectLink() : str_replace(['?stage=Stage', '?stage=Live'], '', $item->Link());
+            $objectClassNameHierarchy = $item->hasMethod('getObjectClassNameHierarchy') ? $item->getObjectClassNameHierarchy() : array_values(ClassInfo::ancestry($className));
+            $objectLastEdited = $item->hasMethod('getObjectLastEdited') ? $item->getObjectLastEdited() : $item->dbObject('LastEdited')->getTimestamp();
+            $objectCreated = $item->hasMethod('getObjectCreated') ? $item->getObjectCreated() : $item->dbObject('Created')->getTimestamp();
 
-        $objectContent = '';
-        if (isset($item->Content) && !empty($item->Content)) {
-            $contentObject = $item->dbObject('Content');
-            if ($className === Post::class) {
-                $objectContent = $contentObject->Parse(BBCodeParser::class);
-            } else {
-                $objectContent = $contentObject->RAW();
-            }
-        }
+            // echo $objectContent;
+            // echo "\n\n";
+            // die();
 
-        if (isset($item->SubTitles) && $item->SubTitles) {
-            $subTitlesObject = $item->dbObject('SubTitles');
-            $objectContent .= (!empty($objectContent) ? "\n\n" : '') . $subTitlesObject->RAW();
-        }
-
-        if ($item->hasMethod('AlgoliaExtraContent')) {
-            $extraContent = $item->AlgoliaExtraContent();
-            if (!empty($extraContent)) {
-                $objectContent .= (!empty($objectContent) ? "\n\n" : '') . $extraContent;
-            }
-        }
-
-        $objectContent = str_replace('><', '> <', $objectContent);
-        $objectContent = strip_tags($objectContent);
-        $objectContent = \html_entity_decode($objectContent);
-        $objectContent = preg_replace('~\s+~', ' ', $objectContent);
-
-        if (strlen($objectContent) > 90000) { // index can be max size of 100,000 bytes
-            $objectContent = substr($objectContent, 0, 90000);
-        }
-
-        // echo $objectContent;
-        // echo "\n\n";
-        // die();
-
-        $objectMetaTitle = '';
-        if (isset($item->MetaTitle) && !empty($item->MetaTitle)) {
-            $objectMetaTitle = strip_tags($item->MetaTitle);
-        }
-
-        $objectMetaDescription = '';
-        if (isset($item->MetaDescription) && !empty($item->MetaDescription)) {
-            $objectMetaDescription = strip_tags($item->MetaDescription);
-        }
-
-        $filterIDs = [];
-        if ($item->hasMethod('Filters') && $item->Filters()->count()) {
-            foreach ($item->Filters() as $filter) {
-                $filterIDs[] = $filter->ID;
-            }
-        }
-
-        if ($className === CourseComponent::class) {
-            $title = $item->getMetaTitle();
-        }
-
-        $jsonData = '';
-        $extraDataArray = [];
-        if ($className === CourseEntry::class) {
-            $modulesCount = (int)$item->Modules()->Count();
-            $modulesCountString = $modulesCount . ' module' . ($modulesCount == 1 ? '' : 's');
-            $studentsEnrolledCount = OwnedCourse::get()->filter([
-                'CourseID' => $item->ID,
-            ])->Count();
-            $studentsEnrolledCountString = $studentsEnrolledCount . ' student' . ($studentsEnrolledCount == 1 ? '' : 's') . ' enrolled';
-            $extraDataArray = [
-                'ModulesCount' => $modulesCountString,
-                'StudentsEnrolledCount' => $studentsEnrolledCountString,
-                'CompetencyLevel' => $item->CompetencyLevel,
-                'UnitPrice' => $item->UnitPrice,
+            $toIndex = [
+                'objectID' => $algoliaIndex->AlgoliaUUID,
+                'objectSilverstripeID' => $item->ID,
+                'objectTitle' => $objectTitle,
+                'objectClassName' => $className,
+                'objectClassNameHierarchy' => $objectClassNameHierarchy,
+                'objectLastEdited' => $objectLastEdited,
+                'objectCreated' => $objectCreated,
+                'objectLink' => $objectLink,
+                'objectContent' => $objectContent,
+                'objectImage' => $objectImage,
+                'objectMetaTitle' => $objectMetaTitle,
+                'objectMetaDescription' => $objectMetaDescription,
+                'objectFilterIDs' => $objectFilterIDs,
+                'objectExtraData' => $objectExtraData,
+                'objectGroupID' => $objectGroupID,
             ];
-        } elseif ($className === ArchivedWebinar::class || $className === QAndAVideoPage::class) {
-            if ($item->VideoDuration > 0) {
-                $extraDataArray = [
-                    'VideoDuration' => $item->VideoTime(),
-                ];
-            }
-        } elseif ($className === BlogPost::class || $className === TechArticle::class) {
-            $content = strip_tags($item->Content);
-            if (!empty($content)) {
-                $wordCount = str_word_count($content);
-                $mintues = floor($wordCount / 200);
-                if ($mintues > 0) {
-                    $estimatedReadingTime = $mintues . ' minute' . ($mintues == 1 ? '' : 's');
-                } else {
-                    $estimatedReadingTime = '1 minute';
-                }
-                $extraDataArray = [
-                    'EstimatedReadingTime' => $estimatedReadingTime,
-                ];
 
-            }
         }
 
-        // if (is_array($jsonDataArray) && count($jsonDataArray)) {
-        //     $jsonData = json_encode($jsonDataArray);
-        // }
-
-        $algoliaIndex = $item->algoliaGetAlgoliaIndexObject();
-        $toIndex = [
-            'objectID' => $algoliaIndex->AlgoliaUUID,
-            'objectSilverstripeID' => $item->ID,
-            'objectTitle' => $title,
-            'objectClassName' => $className,
-            'objectClassNameHierarchy' => array_values(ClassInfo::ancestry($className)),
-            'objectLastEdited' => $item->dbObject('LastEdited')->getTimestamp(),
-            'objectCreated' => $item->dbObject('Created')->getTimestamp(),
-            'objectLink' => str_replace(['?stage=Stage', '?stage=Live'], '', $item->Link()),
-            'objectContent' => $objectContent,
-            'objectImage' => $objectImage,
-            'objectMetaTitle' => $objectMetaTitle,
-            'objectMetaDescription' => $objectMetaDescription,
-            'objectFilterIDs' => $filterIDs,
-            'objectExtraData' => $extraDataArray,
-        ];
+        // dump($toIndex);
+        // die();
 
         // ob_start();
         // var_dump($toIndex);
